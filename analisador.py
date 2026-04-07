@@ -1,59 +1,60 @@
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
 
 def capturar_produtos(termo_busca):
-    print(f"\n🔍 Iniciando busca por: {termo_busca}...")
+    print(f"\n🔍 Buscando por: {termo_busca}...")
     
+    # Formatamos a URL para o padrão de busca do ML
     url = f"https://lista.mercadolivre.com.br/{termo_busca.replace(' ', '-')}"
+    
+    # User-Agent atualizado para parecer um navegador real de 2026
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
     }
 
     try:
-        response = requests.get(url, headers=headers)
-        # O soup transforma o HTML bruto em uma árvore de objetos navegável
+        response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        lista_resultados = []
-        
-        # O seletor 'li.ui-search-layout__item' isola cada card de produto
-        itens = soup.find_all('li', class_='ui-search-layout__item')
+        # Tentativa 1: Seletores de lista (Layout padrão)
+        # O ML costuma usar h2 para títulos de produtos
+        produtos = []
+        cards = soup.find_all(['div', 'li'], class_=['ui-search-result__wrapper', 'ui-search-layout__item'])
 
-        for item in itens[:15]: # Limitando aos 15 primeiros para a aula
-            nome = item.find('h2', class_='ui-search-item__title')
+        if not cards:
+            # Tentativa 2: Se o layout for grade (grid), as classes mudam
+            cards = soup.select('.ui-search-result')
+
+        for item in cards[:10]:
+            # Buscamos o título (geralmente dentro de um h2 ou h3)
+            titulo = item.find(['h2', 'h3'])
             
-            # O preço no ML é dividido em frações e centavos, pegamos a principal
+            # Buscamos o preço (procuramos pela classe que contém a fração do valor)
             preco = item.find('span', class_='andes-money-amount__fraction')
-            link = item.find('a', class_='ui-search-link')
+            
+            if titulo and preco:
+                produtos.append({
+                    "nome": titulo.text.strip(),
+                    "preco": preco.text.strip()
+                })
 
-            if nome and preco:
-                dados = {
-                    "Produto": nome.text.strip(),
-                    "Preço": f"R$ {preco.text.strip()}",
-                    "Link": link['href'] if link else "N/A"
-                }
-                lista_resultados.append(dados)
-
-        return lista_resultados
+        return produtos
 
     except Exception as e:
-        print(f"❌ Erro na conexão: {e}")
+        print(f"❌ Erro de conexão: {e}")
         return []
 
-# --- Fluxo de Execução ---
 if __name__ == "__main__":
-    busca = input("O que você deseja pesquisar no Mercado Livre? ")
+    busca = input("O que pesquisar? ")
     resultados = capturar_produtos(busca)
 
     if resultados:
-        # Usando Pandas para mostrar uma tabela bonita no terminal
-        df = pd.DataFrame(resultados)
-        print("\n--- RESULTADOS ENCONTRADOS ---")
-        print(df[['Produto', 'Preço']]) # Mostra apenas colunas principais
-        
-        # Automação Extra: Salvar em CSV para os alunos
-        df.to_csv("resultado_busca.csv", index=False, encoding='utf-8-sig')
-        print("\n✅ Arquivo 'resultado_busca.csv' gerado com sucesso!")
+        print("\n✅ PRODUTOS ENCONTRADOS:")
+        print("-" * 40)
+        for p in resultados:
+            print(f"📦 {p['nome'][:50]}... | 💰 R$ {p['preco']}")
+        print("-" * 40)
     else:
-        print("⚠️ Nenhum resultado encontrado. Tente outro termo.")
+        print("\n⚠️ O Mercado Livre bloqueou o acesso ou mudou as classes CSS.")
+        print("Dica: Tente rodar novamente ou verifique se o site abre no seu navegador.")
